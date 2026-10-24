@@ -1,0 +1,25 @@
+[project]
+name = "price-stalker"
+version = "0.1.0"
+description = "Track product prices across trusted US e-commerce sites"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "apscheduler>=3.10,<4",
+    "streamlit>=1.35",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+browser = ["playwright>=1.40"]
+
+[project.scripts]
+price-stalker = "price_stalker.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["price_stalker*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
