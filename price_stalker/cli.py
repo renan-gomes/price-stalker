@@ -128,6 +128,16 @@ def main(argv: list[str] | None = None) -> int:
     rr = rsub.add_parser("remove", help="remove a retailer you registered")
     rr.add_argument("domain")
 
+    pr = sub.add_parser("probe", help="test whether shops can be read (give one product URL per shop)")
+    pr.add_argument("urls", nargs="*")
+    pr.add_argument("-f", "--file", help="text file with one URL per line (# comments allowed)")
+    pr.add_argument("--register", action="store_true", help="register the shops that work")
+
+    al = sub.add_parser("alerts", help="set up and test Telegram alerts")
+    asub = al.add_subparsers(dest="acmd", required=True)
+    asub.add_parser("test", help="send a test message to your Telegram")
+    asub.add_parser("chat-id", help="find your chat id (send any message to your bot first)")
+
     sub.add_parser("check", help="fetch current prices once")
     sc = sub.add_parser("schedule", help="check periodically")
     sc.add_argument("--every", type=float, default=6.0, help="hours between checks")
@@ -204,6 +214,57 @@ def main(argv: list[str] | None = None) -> int:
         if affected:
             print(f"note: {len(affected)} tracked item(s) from {domain} will fail checks until you register it again "
                   f"(see `price-stalker list`; `pause` stops the checks)")
+    elif args.cmd == "probe":
+        from price_stalker.extraction.probe import probe
+        urls = list(args.urls)
+        if args.file:
+            with open(args.file, encoding="utf-8") as fh:
+                urls += [ln.strip() for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
+        if not urls:
+            raise SystemExit("give product URLs, or a file with -f urls.txt (one product page per shop)")
+        results = []
+        for url in dict.fromkeys(urls):
+            res = probe(url)
+            results.append(res)
+            print(f"{res.status:<13} {res.domain:<26} {res.detail}")
+        counts = {s: sum(r.status == s for r in results) for s in ("OK", "NEEDS_VARIANT", "NO_PRICE", "BLOCKED", "ERROR")}
+        print("\n" + ", ".join(f"{n} {s}" for s, n in counts.items() if n))
+        todo = {}
+        for r in results:
+            if r.supported and registry.retailer_for(r.url) is None:
+                todo.setdefault(r.domain, r)
+        for domain in todo:
+            name, dom = split_name_domain([domain])
+            if args.register:
+                store.add_retailer(name, dom)
+                print(f"registered {name} ({dom})")
+            else:
+                print(f"works but not registered: price-stalker retailer add {name} {dom}")
+        if todo and not args.register:
+            print("(or run the same probe again with --register)")
+    elif args.cmd == "alerts":
+        from price_stalker import alerts
+        token, chat = alerts._telegram_creds()
+        if args.acmd == "chat-id":
+            if not token:
+                raise SystemExit("set TELEGRAM_BOT_TOKEN first (get it from @BotFather); see README > Alerts")
+            try:
+                chats = alerts.telegram_chat_ids()
+            except Exception as exc:
+                raise SystemExit(f"telegram failed: {alerts.telegram_error(exc)}")
+            if not chats:
+                raise SystemExit("no messages found: open your bot in Telegram, press Start / send any text, run this again")
+            for cid, label in chats:
+                print(f"TELEGRAM_CHAT_ID={cid}   ({label})")
+        else:
+            if not token or not chat:
+                raise SystemExit("not configured: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID "
+                                 "(`price-stalker alerts chat-id` finds the second one); see README > Alerts")
+            try:
+                alerts.telegram_send("✅ price-stalker: Telegram alerts are working", raise_errors=True)
+            except Exception as exc:
+                raise SystemExit(f"telegram failed: {alerts.telegram_error(exc)}")
+            print("test message sent; check your Telegram")
     elif args.cmd == "target":
         if args.id not in {r["id"] for r in store.overview()}:
             raise SystemExit(f"no item #{args.id}; see `price-stalker list`")

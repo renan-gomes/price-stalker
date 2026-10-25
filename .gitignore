@@ -3,6 +3,3 @@ __pycache__/
 *.egg-info/
 *.db
 .env
-debug_page.html
-*.db.bak
-schedule.log

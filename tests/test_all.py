@@ -580,3 +580,91 @@ def test_amazon_robot_check_is_recognised_and_amazon_not_builtin(tmp_path, monke
     monkeypatch.setenv("PRICE_STALKER_DB", str(tmp_path / "a.db"))
     main(["retailer", "add", "Amazon", "amazon.com"])    # opt-in still possible
     assert registry.is_trusted(url)
+
+
+# ---- probe + telegram setup ------------------------------------------------------------------
+
+from price_stalker.extraction.probe import probe
+
+
+class _Resp:
+    def __init__(self, code=200, text="", payload=None):
+        self.status_code, self.ok, self.text, self._p = code, code < 400, text, payload
+
+    def json(self):
+        return self._p
+
+    def raise_for_status(self):
+        if not self.ok:
+            import requests
+            raise requests.HTTPError(response=self)
+
+
+class _Sess:
+    def __init__(self, resp=None, exc=None): self.resp, self.exc = resp, exc
+
+    def get(self, *a, **k):
+        if self.exc:
+            raise self.exc
+        return self.resp
+
+
+@pytest.mark.parametrize("resp,status", [
+    (_Resp(text=JSON_LD), "OK"),
+    (_Resp(text=WOO), "NEEDS_VARIANT"),
+    (_Resp(text="<html><title>Shop</title></html>"), "NO_PRICE"),
+    (_Resp(403), "BLOCKED"), (_Resp(412), "BLOCKED"), (_Resp(429), "BLOCKED"),
+    (_Resp(text="<title>Robot or human?</title>"), "BLOCKED"),
+    (_Resp(404), "ERROR"),
+])
+def test_probe_classifies(resp, status):
+    assert probe("https://www.example-shop.com/p/1", _Sess(resp)).status == status
+
+
+def test_probe_network_error_and_domain():
+    import requests
+    r = probe("https://www.example-shop.com/p/1", _Sess(exc=requests.ConnectionError("dns")))
+    assert (r.status, r.domain) == ("ERROR", "example-shop.com") and not r.supported
+
+
+def test_probe_cli_file_register_and_summary(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("PRICE_STALKER_DB", str(tmp_path / "pr.db"))
+    pages = {"https://www.goodshop.com/p/1": _Resp(text=JSON_LD), "https://www.blocked.com/p/1": _Resp(403)}
+    monkeypatch.setattr("price_stalker.extraction.probe.requests.get", lambda url, **k: pages[url])
+    f = tmp_path / "urls.txt"
+    f.write_text("# one per shop\nhttps://www.goodshop.com/p/1\n\nhttps://www.blocked.com/p/1\n")
+    main(["probe", "-f", str(f)])
+    out = capsys.readouterr().out
+    assert "OK" in out and "BLOCKED" in out and "retailer add Goodshop goodshop.com" in out
+    assert not registry.is_trusted("https://www.goodshop.com/p/1")
+    main(["probe", "-f", str(f), "--register"])
+    assert registry.is_trusted("https://www.goodshop.com/p/1") and not registry.is_trusted("https://www.blocked.com/p/1")
+    with pytest.raises(SystemExit, match="give product URLs"):
+        main(["probe"])
+
+
+def test_alerts_test_and_chat_id(monkeypatch, capsys):
+    posted = []
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    with pytest.raises(SystemExit, match="not configured"):
+        main(["alerts", "test"])
+    with pytest.raises(SystemExit, match="TELEGRAM_BOT_TOKEN first"):
+        main(["alerts", "chat-id"])
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+    monkeypatch.setattr("price_stalker.alerts.requests.post", lambda url, **k: posted.append((url, k["data"])) or _Resp())
+    main(["alerts", "test"])
+    assert posted[0][1]["chat_id"] == "42" and "test message sent" in capsys.readouterr().out
+    monkeypatch.setattr("price_stalker.alerts.requests.post",
+                        lambda url, **k: _Resp(401, payload={"description": "Unauthorized"}))
+    with pytest.raises(SystemExit, match="HTTP 401: Unauthorized"):
+        main(["alerts", "test"])
+    updates = {"result": [{"message": {"chat": {"id": 777, "first_name": "Renan", "last_name": "G"}}},
+                          {"message": {"chat": {"id": 777, "first_name": "Renan", "last_name": "G"}}}]}
+    monkeypatch.setattr("price_stalker.alerts.requests.get", lambda url, **k: _Resp(payload=updates))
+    main(["alerts", "chat-id"])
+    assert "TELEGRAM_CHAT_ID=777   (Renan G)" in capsys.readouterr().out
+    monkeypatch.setattr("price_stalker.alerts.requests.get", lambda url, **k: _Resp(payload={"result": []}))
+    with pytest.raises(SystemExit, match="no messages found"):
+        main(["alerts", "chat-id"])

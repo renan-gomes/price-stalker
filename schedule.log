@@ -1,0 +1,13 @@
+nohup: ignoring input
+INFO Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO Added job "run_forever.<locals>.<lambda>" to job store "default"
+INFO Scheduler started
+INFO Running job "run_forever.<locals>.<lambda> (trigger: interval[1:00:00], next run at: 2026-10-24 16:11:10 CDT)" (scheduled at 2026-10-24 16:11:10.325060-05:00)
+INFO check: {'ok': 4, 'failed': 0}
+INFO Job "run_forever.<locals>.<lambda> (trigger: interval[1:00:00], next run at: 2026-10-24 17:11:10 CDT)" executed successfully
+INFO Running job "run_forever.<locals>.<lambda> (trigger: interval[1:00:00], next run at: 2026-10-24 18:11:10 CDT)" (scheduled at 2026-10-24 17:11:10.325060-05:00)
+INFO check: {'ok': 3, 'failed': 0}
+INFO Job "run_forever.<locals>.<lambda> (trigger: interval[1:00:00], next run at: 2026-10-24 18:11:10 CDT)" executed successfully
+INFO Running job "run_forever.<locals>.<lambda> (trigger: interval[1:00:00], next run at: 2026-10-24 19:11:10 CDT)" (scheduled at 2026-10-24 18:11:10.325060-05:00)
+INFO check: {'ok': 3, 'failed': 0}
+INFO Job "run_forever.<locals>.<lambda> (trigger: interval[1:00:00], next run at: 2026-10-24 19:11:10 CDT)" executed successfully

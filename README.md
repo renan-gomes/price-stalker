@@ -42,10 +42,14 @@ DB path: `PRICE_STALKER_DB` (default `price_stalker.db`).
 target price**, or **fails 3 checks in a row**. Set a target with `add ... --target 120` or
 `price-stalker target <#> 120` (`none` clears it).
 
-To also get alerts on Telegram: create a bot with @BotFather, send it a message, then set
+To also get alerts on Telegram:
 
-    export TELEGRAM_BOT_TOKEN=123456:ABC...
-    export TELEGRAM_CHAT_ID=<your chat id>   # visible at https://api.telegram.org/bot<TOKEN>/getUpdates
+1. In Telegram, talk to @BotFather: `/newbot`, pick a name, copy the **token**.
+2. Open your new bot and press **Start** (or send any text).
+3. `export TELEGRAM_BOT_TOKEN=<token>` then run `price-stalker alerts chat-id` to find your chat id.
+4. `export TELEGRAM_CHAT_ID=<id>` then run `price-stalker alerts test`: a message should arrive.
+
+Put both `export` lines in `~/.bashrc` so `schedule` (also under `nohup`/`tmux`) always sees them.
 
 `list` shows the change since the previous check (▼/▲), the lowest price seen, the target (✔ when
 reached) and a `⚠ failing since ...` line for items that keep failing.
@@ -70,3 +74,12 @@ Some shops (e.g. Sephora) refuse plain requests. When a shop answers 403/429/503
 Variables: `PRICE_STALKER_CHROMIUM` (path to an existing Chrome/Chromium) and
 `PRICE_STALKER_HEADED=1` (show the window; some shops only accept a visible browser).
 Browser checks take a few seconds each and are not guaranteed to pass every anti-bot system.
+
+## Which shops work?
+
+    price-stalker probe <product url> <product url> ...   # one product page per shop
+    price-stalker probe -f urls.txt --register            # file with one URL per line; register the ones that work
+
+Each shop is reported as `OK` (price read), `NEEDS_VARIANT` (several options; use `--variant`),
+`NO_PRICE` (page loads but the price is added by JavaScript), `BLOCKED` (403 / robot check) or `ERROR`.
+`probe` works on shops that are not registered yet, and uses plain requests only.
